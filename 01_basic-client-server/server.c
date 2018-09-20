@@ -63,20 +63,20 @@ int main(int argc, char **argv)
   addr.sin_family = AF_INET;
 #endif
 
-  TEST_Z(ec = rdma_create_event_channel());
-  TEST_NZ(rdma_create_id(ec, &listener, NULL, RDMA_PS_TCP));
-  TEST_NZ(rdma_bind_addr(listener, (struct sockaddr *)&addr));
-  TEST_NZ(rdma_listen(listener, 10)); /* backlog=10 is arbitrary */
+  TEST_Z(ec = rdma_create_event_channel());//当有事件发生时，通知应用程序的通道
+  TEST_NZ(rdma_create_id(ec, &listener, NULL, RDMA_PS_TCP));//等价socket，identify
+  TEST_NZ(rdma_bind_addr(listener, (struct sockaddr *)&addr));//绑定本地地址和端口
+  TEST_NZ(rdma_listen(listener, 10)); /* backlog=10 is arbitrary */ //开始listen
 
-  port = ntohs(rdma_get_src_port(listener));
+  port = ntohs(rdma_get_src_port(listener)); //获取系统分配的端口号
 
-  printf("listening on port %d.\n", port);
+  printf("listening on port %d.\n", port);//输出提示
 
-  while (rdma_get_cm_event(ec, &event) == 0) {
+  while (rdma_get_cm_event(ec, &event) == 0) {//从event_channel获取一个事件，阻塞调用
     struct rdma_cm_event event_copy;
 
     memcpy(&event_copy, event, sizeof(*event));
-    rdma_ack_cm_event(event);
+    rdma_ack_cm_event(event); //对于每个event都要ack，对应rdma_get_cm_event，否则内存leak
 
     if (on_event(&event_copy))
       break;
@@ -107,9 +107,9 @@ void build_context(struct ibv_context *verbs)
 
   s_ctx->ctx = verbs;
 
-  TEST_Z(s_ctx->pd = ibv_alloc_pd(s_ctx->ctx));
-  TEST_Z(s_ctx->comp_channel = ibv_create_comp_channel(s_ctx->ctx));
-  TEST_Z(s_ctx->cq = ibv_create_cq(s_ctx->ctx, 10, NULL, s_ctx->comp_channel, 0)); /* cqe=10 is arbitrary */
+  TEST_Z(s_ctx->pd = ibv_alloc_pd(s_ctx->ctx)); //创建保护域，在内存与队列建立关联关系，防止未授权的访问
+  TEST_Z(s_ctx->comp_channel = ibv_create_comp_channel(s_ctx->ctx));//当有事件完成时，通过此事件通道通知应用
+  TEST_Z(s_ctx->cq = ibv_create_cq(s_ctx->ctx, 10, NULL, s_ctx->comp_channel, 0)); /* cqe=10 is arbitrary *///创建对应事件通道的完成队列
   TEST_NZ(ibv_req_notify_cq(s_ctx->cq, 0));
 
   TEST_NZ(pthread_create(&s_ctx->cq_poller_thread, NULL, poll_cq, NULL));
@@ -168,7 +168,7 @@ void register_memory(struct connection *conn)
   conn->send_region = malloc(BUFFER_SIZE);
   conn->recv_region = malloc(BUFFER_SIZE);
 
-  TEST_Z(conn->send_mr = ibv_reg_mr(
+  TEST_Z(conn->send_mr = ibv_reg_mr( //注册内存区域，RDMA使用的内存
     s_ctx->pd,
     conn->send_region,
     BUFFER_SIZE,
@@ -207,7 +207,7 @@ int on_connect_request(struct rdma_cm_id *id)
   build_context(id->verbs);
   build_qp_attr(&qp_attr);
 
-  TEST_NZ(rdma_create_qp(id, s_ctx->pd, &qp_attr));
+  TEST_NZ(rdma_create_qp(id, s_ctx->pd, &qp_attr));  //创建接收队列和发送队列
 
   id->context = conn = (struct connection *)malloc(sizeof(struct connection));
   conn->qp = id->qp;
@@ -216,7 +216,7 @@ int on_connect_request(struct rdma_cm_id *id)
   post_receives(conn);
 
   memset(&cm_params, 0, sizeof(cm_params));
-  TEST_NZ(rdma_accept(id, &cm_params));
+  TEST_NZ(rdma_accept(id, &cm_params)); //准备好接收client请求
 
   return 0;
 }
