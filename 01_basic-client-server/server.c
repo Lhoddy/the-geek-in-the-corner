@@ -75,15 +75,15 @@ int main(int argc, char **argv)
   while (rdma_get_cm_event(ec, &event) == 0) {//从event_channel获取一个事件，阻塞调用
     struct rdma_cm_event event_copy;
 
-    memcpy(&event_copy, event, sizeof(*event));
+    memcpy(&event_copy, event, sizeof(*event));  //将event内容copy出来
     rdma_ack_cm_event(event); //对于每个event都要ack，对应rdma_get_cm_event，否则内存leak
 
-    if (on_event(&event_copy))
+    if (on_event(&event_copy)) //处理事件内容
       break;
   }
 
-  rdma_destroy_id(listener);
-  rdma_destroy_event_channel(ec);
+  rdma_destroy_id(listener);  //销毁identify
+  rdma_destroy_event_channel(ec); //销毁通信通道
 
   return 0;
 }
@@ -96,9 +96,9 @@ void die(const char *reason)
 
 void build_context(struct ibv_context *verbs)
 {
-  if (s_ctx) {
+  if (s_ctx) {   //如果已有context
     if (s_ctx->ctx != verbs)
-      die("cannot handle events in more than one context.");
+      die("cannot handle events in more than one context.");   //如果本地上下文环境和要处理的上下文环境不一致
 
     return;
   }
@@ -110,9 +110,9 @@ void build_context(struct ibv_context *verbs)
   TEST_Z(s_ctx->pd = ibv_alloc_pd(s_ctx->ctx)); //创建保护域，在内存与队列建立关联关系，防止未授权的访问
   TEST_Z(s_ctx->comp_channel = ibv_create_comp_channel(s_ctx->ctx));//当有事件完成时，通过此事件通道通知应用
   TEST_Z(s_ctx->cq = ibv_create_cq(s_ctx->ctx, 10, NULL, s_ctx->comp_channel, 0)); /* cqe=10 is arbitrary *///创建对应事件通道的完成队列
-  TEST_NZ(ibv_req_notify_cq(s_ctx->cq, 0));
+  TEST_NZ(ibv_req_notify_cq(s_ctx->cq, 0));   //为下一个放入cq的请求添加通知，能被ibv_get_cq_event获取
 
-  TEST_NZ(pthread_create(&s_ctx->cq_poller_thread, NULL, poll_cq, NULL));
+  TEST_NZ(pthread_create(&s_ctx->cq_poller_thread, NULL, poll_cq, NULL));  //创建新线程执行poll_cq函数
 }
 
 void build_qp_attr(struct ibv_qp_init_attr *qp_attr)
@@ -135,12 +135,12 @@ void * poll_cq(void *ctx)
   struct ibv_wc wc;
 
   while (1) {
-    TEST_NZ(ibv_get_cq_event(s_ctx->comp_channel, &cq, &ctx));
-    ibv_ack_cq_events(cq, 1);
-    TEST_NZ(ibv_req_notify_cq(cq, 0));
+    TEST_NZ(ibv_get_cq_event(s_ctx->comp_channel, &cq, &ctx));  //从cq中读出请求，阻塞
+    ibv_ack_cq_events(cq, 1);   //accept该请求
+    TEST_NZ(ibv_req_notify_cq(cq, 0));  //将下一个cq请求加上通知
 
-    while (ibv_poll_cq(cq, 1, &wc))
-      on_completion(&wc);
+    while (ibv_poll_cq(cq, 1, &wc))  //读取work completion到wc，一次读取一个直到cq为空
+      on_completion(&wc);     //处理cq的wc
   }
 
   return NULL;
@@ -183,15 +183,15 @@ void register_memory(struct connection *conn)
 
 void on_completion(struct ibv_wc *wc)
 {
-  if (wc->status != IBV_WC_SUCCESS)
+  if (wc->status != IBV_WC_SUCCESS)   //如果状态不是成功，则报错
     die("on_completion: status is not IBV_WC_SUCCESS.");
 
-  if (wc->opcode & IBV_WC_RECV) {
+  if (wc->opcode & IBV_WC_RECV) {    //如果是recv请求，输入接受的信息
     struct connection *conn = (struct connection *)(uintptr_t)wc->wr_id;
 
     printf("received message: %s\n", conn->recv_region);
 
-  } else if (wc->opcode == IBV_WC_SEND) {
+  } else if (wc->opcode == IBV_WC_SEND) {   //否则是send请求，输出提示
     printf("send completed successfully.\n");
   }
 }
@@ -204,16 +204,16 @@ int on_connect_request(struct rdma_cm_id *id)
 
   printf("received connection request.\n");
 
-  build_context(id->verbs);
-  build_qp_attr(&qp_attr);
+  build_context(id->verbs);   //构建上下文环境
+  build_qp_attr(&qp_attr);   //队列对初始化
 
   TEST_NZ(rdma_create_qp(id, s_ctx->pd, &qp_attr));  //创建接收队列和发送队列
 
-  id->context = conn = (struct connection *)malloc(sizeof(struct connection));
+  id->context = conn = (struct connection *)malloc(sizeof(struct connection));   //分配连接数据结构空间
   conn->qp = id->qp;
 
-  register_memory(conn);
-  post_receives(conn);
+  register_memory(conn);   //为本地连接注册空间
+  post_receives(conn);     //发出接受连接的信息
 
   memset(&cm_params, 0, sizeof(cm_params));
   TEST_NZ(rdma_accept(id, &cm_params)); //准备好接收client请求
@@ -233,7 +233,7 @@ int on_connection(void *context)
 
   memset(&wr, 0, sizeof(wr));
 
-  wr.opcode = IBV_WR_SEND;
+  wr.opcode = IBV_WR_SEND;   //通信模式是send/recv
   wr.sg_list = &sge;
   wr.num_sge = 1;
   wr.send_flags = IBV_SEND_SIGNALED;
@@ -242,7 +242,7 @@ int on_connection(void *context)
   sge.length = BUFFER_SIZE;
   sge.lkey = conn->send_mr->lkey;
 
-  TEST_NZ(ibv_post_send(conn->qp, &wr, &bad_wr));
+  TEST_NZ(ibv_post_send(conn->qp, &wr, &bad_wr));  //server将sge内容发送到远端qp中
 
   return 0;
 }
@@ -272,12 +272,12 @@ int on_event(struct rdma_cm_event *event)
 {
   int r = 0;
 
-  if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST)
-    r = on_connect_request(event->id);
+  if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST)  //如果为连接请求
+    r = on_connect_request(event->id);   //处理连接请求   id属于client or？
   else if (event->event == RDMA_CM_EVENT_ESTABLISHED)
-    r = on_connection(event->id->context);
-  else if (event->event == RDMA_CM_EVENT_DISCONNECTED)
-    r = on_disconnect(event->id);
+    r = on_connection(event->id->context);    //建立连接
+  else if (event->event == RDMA_CM_EVENT_DISCONNECTED)  
+    r = on_disconnect(event->id);  
   else
     die("on_event: unknown event.");
 
