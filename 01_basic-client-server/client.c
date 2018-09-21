@@ -58,17 +58,17 @@ int main(int argc, char **argv)
   struct rdma_event_channel *ec = NULL;
 
   if (argc != 3)
-    die("usage: client <server-address> <server-port>");
+    die("usage: client <server-address> <server-port>");   
 
-  TEST_NZ(getaddrinfo(argv[1], argv[2], NULL, &addr));
+  TEST_NZ(getaddrinfo(argv[1], argv[2], NULL, &addr));   //从参数获取地址信息
 
-  TEST_Z(ec = rdma_create_event_channel());
-  TEST_NZ(rdma_create_id(ec, &conn, NULL, RDMA_PS_TCP));
-  TEST_NZ(rdma_resolve_addr(conn, NULL, addr->ai_addr, TIMEOUT_IN_MS));
+  TEST_Z(ec = rdma_create_event_channel());  //当有事件发生时，通知应用程序的通道
+  TEST_NZ(rdma_create_id(ec, &conn, NULL, RDMA_PS_TCP));  //等价socket，identify
+  TEST_NZ(rdma_resolve_addr(conn, NULL, addr->ai_addr, TIMEOUT_IN_MS));   //处理地址信息
 
-  freeaddrinfo(addr);
+  freeaddrinfo(addr);  //释放地址信息
 
-  while (rdma_get_cm_event(ec, &event) == 0) {
+  while (rdma_get_cm_event(ec, &event) == 0) {   //和server端相同
     struct rdma_cm_event event_copy;
 
     memcpy(&event_copy, event, sizeof(*event));
